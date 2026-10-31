@@ -1,0 +1,7 @@
+# NEVER commit private keys or state files (they contain IDs/IPs of your infra)
+*.pem
+state.json
+monitoring_state.json
+__pycache__/
+*.pyc
+.venv/
