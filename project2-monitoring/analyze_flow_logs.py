@@ -86,7 +86,7 @@ def main():
         print("No log files yet. Flow logs take ~5-15 min to appear - try again shortly.")
         return
 
-    # ---- counters -----------------------------------------------------------
+    # counters
     bytes_by_src = Counter()
     rejects_by_src = Counter()
     rejected_ports = defaultdict(set)      # src IP -> set of ports it tried and was blocked on
@@ -109,7 +109,7 @@ def main():
                 rejects_by_src[rec["src"]] += 1
                 rejected_ports[rec["src"]].add(rec["dstport"])
 
-    # ---- report -------------------------------------------------------------
+    # report 
     rejected_total = actions["REJECT"]
     print(f"\n=== Flow log report: last {args.hours}h | {len(keys)} files | {total} flow records ===")
     print("(a record = one flow per 5-tuple per minute, not one packet)\n")

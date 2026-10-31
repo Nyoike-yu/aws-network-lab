@@ -50,7 +50,7 @@ def main():
         save_state(state)
         print(f"    {k} = {v}")
 
-    # ------------------------------------------------------- 1. S3 bucket
+    # 1. S3 bucket
     bucket = f"lab-flowlogs-{account}-{region}"    # bucket names are globally unique
     print(f"[1/6] Creating private S3 bucket {bucket}")
     kwargs = {"Bucket": bucket}
@@ -67,7 +67,7 @@ def main():
         "BlockPublicPolicy": True, "RestrictPublicBuckets": True})
     remember("bucket", bucket)
 
-    # ------------------------------------------------------ 2. Flow logs
+    # 2. Flow logs
     print("[2/6] Enabling VPC Flow Logs -> S3 (all traffic, 1-minute aggregation)")
     resp = ec2.create_flow_logs(
         ResourceIds=[vpc_id], ResourceType="VPC",
@@ -79,7 +79,7 @@ def main():
         raise RuntimeError(resp["Unsuccessful"])
     remember("flow_log_id", resp["FlowLogIds"][0])
 
-    # --------------------------------------------- 3. IAM role for the server
+    # 3. IAM role for the server
     print("[3/6] Creating IAM role + instance profile (least privilege)")
     trust = {"Version": "2012-10-17", "Statement": [{
         "Effect": "Allow", "Principal": {"Service": "ec2.amazonaws.com"},
@@ -120,14 +120,14 @@ def main():
             print(f"    not ready yet ({e.response['Error']['Code']}), retrying...")
             time.sleep(8)
 
-    # --------------------------------------------------------- 4. SNS topic
+    #  4. SNS topic
     print(f"[4/6] Creating SNS topic and subscribing {args.email}")
     topic_arn = sns.create_topic(Name=TOPIC_NAME)["TopicArn"]
     sns.subscribe(TopicArn=topic_arn, Protocol="email", Endpoint=args.email)
     remember("topic_arn", topic_arn)
     print("    >>> CHECK YOUR INBOX and click 'Confirm subscription' or no alerts will arrive!")
 
-    # ----------------------------------------------------- 5. CloudWatch alarms
+    #  5. CloudWatch alarms
     print("[5/6] Creating CloudWatch alarms")
     cw.put_metric_alarm(
         AlarmName=ALARM_DISK,
