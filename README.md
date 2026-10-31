@@ -1,167 +1,185 @@
-**AWS Network & Observability Lab: Automated VPC Infrastructure and Telemetry with Python (boto3)**
+<div align="center">
 
+# ☁️ AWS Network & Observability Lab
+### Automated VPC Infrastructure & Linux Telemetry with Python (`boto3`)
 
-Overview & Motivation
-Cloud tutorials often teach AWS services in isolation—clicking through the console to spin up an EC2 instance one day, or reading about CIDR blocks the next. I built this repository to bridge the gap between theoretical networking, Linux systems administration, and cloud automation by engineering one cohesive, end-to-end infrastructure lab.   
+[![AWS](https://img.shields.io/badge/AWS-VPC%20%7C%20EC2%20%7C%20IAM%20%7C%20CloudWatch-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
+[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Boto3](https://img.shields.io/badge/SDK-Boto3-232F3E?style=for-the-badge&logo=amazon-aws&logoColor=FF9900)](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html)
+[![Linux](https://img.shields.io/badge/Linux-Ubuntu%20%7C%20%2Fproc%20%7C%20UFW-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://ubuntu.com/)
 
+<p align="center">
+  <em>An end-to-end cloud engineering lab bridging networking, Linux internals, and Python automation into one connected, self-testing AWS environment.</em>
+</p>
 
-Instead of relying on manual console clicks ("ClickOps") or jumping straight into high-level abstractions like Terraform before understanding the underlying API calls, I chose to automate the entire lifecycle using Python and the AWS SDK (boto3). Writing imperative provisioning and teardown scripts forced me to confront how AWS resources actually depend on one another, how state is tracked, and how network packets traverse security boundaries in real time.   
+[Architecture](#-system-architecture) •
+[Modules](#-repository-modules) •
+[Engineering Deep Dive](#-engineering--learning-journey) •
+[Quick Start](#-quick-start--execution-guide) •
+[Troubleshooting](#-troubleshooting--lessons-learned)
 
+</div>
 
-**System Architecture**
-This lab is split into two interconnected phases where the observability layer (Project 2) sits directly on top of the hardened network foundation (Project 1):   
+---
 
+## 🎯 Overview & Motivation
 
-Plaintext
-                        [ Internet ]
-                             |
-                   [ Internet Gateway ]
-                             |
-        +--------------------+--------------------+
-        |              VPC (Custom CIDR)          |
-        |                                         |
-        |  +-----------------------------------+  |
-        |  |           Public Subnet           |  |
-        |  |                                   |  |
-        |  |  [ Bastion Host ]   [ NAT GW ]    |  |
-        |  |  (SSH Hardened /       |          |  |
-        |  |   UFW Enabled)         |          |  |
-        |  +------------------------|----------+  |
-        |                           |             |
-        |  +------------------------v----------+  |
-        |  |          Private Subnet           |  |
-        |  |                                   |  |
-        |  |     [ Private Linux Server ]      |  |
-        |  |     (Custom /proc Telemetry)      |  |
-        |  +-----------------------------------+  |
-        +--------------------|--------------------+
-                             |
-         +-------------------+-------------------+
-         |                                       |
-         v                                       v
-[ VPC Flow Logs ]                    [ Custom CloudWatch Agent ]
-(Parsed via Python)                  (Cron + /proc Metrics)
-         |                                       |
-         +-------------------+-------------------+
-                             |
-                             v
-                 [ Amazon CloudWatch ]
-                  (Metrics & Alarms)
-                             |
-                             v
-                    [ Amazon SNS ]
-                 (Email Alerting Action)
+Cloud tutorials often teach AWS services in isolation—clicking through the console to spin up an EC2 instance one day, or reading about CIDR blocks the next. I built this repository to understand how **networking, Linux systems administration, Python, and AWS fit together** as a single cohesive system rather than four disconnected tutorials.
 
-**Repository Breakdown**
-Module	Core Focus	AWS & Linux Concepts Practiced
-project1-secure-vpc	Network Foundation & Compute Hardening	
-Custom VPC design, CIDR subnetting, public/private route tables, Internet & NAT Gateways, chained Security Groups, Bastion jump-host architecture, OS-level SSH hardening, ufw host firewall rules, and automated infrastructure verification. 
+Instead of relying on manual console clicks ("ClickOps") or jumping straight into high-level abstractions before understanding the underlying API calls, I automated the entire lifecycle using **Python and the AWS SDK (`boto3`)**[cite: 1]. Building imperative provisioning, verification, and teardown scripts from scratch forced me to confront how AWS resources depend on one another, how state is tracked, and how network packets traverse security boundaries.
 
+> [!NOTE]
+> **Learning & Engineering Scope:** I built this lab to master cloud infrastructure fundamentals from the ground up rather than claim production scale[cite: 1]. Every roadblock—from WSL file permissions to VPC Flow Log delays—is documented below[cite: 1].
 
-project2-monitoring	Telemetry, Log Analysis & Alerting	
-VPC Flow Logs, Python log parsing, Linux /proc filesystem telemetry, cron scheduling, IAM Instance Profiles (least privilege), custom CloudWatch metric ingestion, CloudWatch Alarms, and SNS topic notifications. 
+---
 
+## 🏗️ System Architecture
 
-**Engineering & Learning Journey: What This Lab Entails**
+Project 2's observability pipeline layers directly on top of Project 1's segmented network foundation[cite: 1]:
 
-**Programmatic Infrastructure & State Management (boto3)**
+```mermaid
+flowchart TB
+    Internet((🌍 Public Internet))
+    IGW[Internet Gateway]
+
+    subgraph VPC ["🔒 Custom AWS VPC (Segmented CIDR)"]
+        direction TB
+        
+        subgraph PubSub ["🌐 Public Subnet"]
+            Bastion["🛡️ Bastion Host (EC2)<br/>SSH Hardened + UFW Firewall"]
+            NAT["🔄 NAT Gateway<br/>(Elastic IP Attached)"]
+        end
+
+        subgraph PrivSub ["🔐 Private Subnet (No Public IP)"]
+            PrivEC2["🐧 Private Linux Server (EC2)<br/>Custom /proc Telemetry Agent (cron)"]
+            IAMRole(("🔑 IAM Instance Profile<br/>(Least Privilege STS)"))
+            PrivEC2 -. Assumes .- IAMRole
+        end
+    end
+
+    subgraph Observability ["📊 AWS Observability & Alerting (Project 2)"]
+        FlowLogs["📜 VPC Flow Logs<br/>(Accept / Reject Records)"]
+        Parser["🐍 analyze_flow_logs.py<br/>(Python Log Parser)"]
+        CW["📈 Amazon CloudWatch<br/>(Custom Metrics & Alarms)"]
+        SNS["🚨 Amazon SNS<br/>(Email Incident Alerts)"]
+    end
+
+    Internet <==>|"Inbound SSH (Port 22)"| IGW
+    IGW <==> Bastion
+    Bastion ==>|"Chained Security Group<br/>(Internal SSH Only)"| PrivEC2
+    PrivEC2 ==>|"Outbound Updates & API Calls"| NAT
+    NAT ==> IGW
+
+    VPC -.->|"Captures Network Traffic"| FlowLogs
+    FlowLogs --> Parser
+    Parser ==>|"PutMetricData"| CW
+    PrivEC2 ==>|"Pushes /proc Metrics"| CW
+    CW ==>|"Threshold Breach"| SNS
+```
+
+---
+
+## 📂 Repository Modules
+
+| # | Module Directory | Core Architecture Focus | Technologies & Concepts Practiced |
+| :-: | :--- | :--- | :--- |
+| **01** | [**`project1-secure-vpc`**](project1-secure-vpc/) | **Segmented VPC & Compute Hardening** | Custom VPC, CIDR subnetting, public/private route tables, NAT Gateway, Security Group chaining, Bastion host, SSH hardening, `ufw` host firewall, `boto3` provisioning, self-testing infrastructure (`verify.py`)[cite: 1]. |
+| **02** | [**`project2-monitoring`**](project2-monitoring/) | **Telemetry, Flow Logs & Alerting** | VPC Flow Logs, Python log analysis, custom CloudWatch metrics scraped from Linux `/proc`, `cron` scheduling, least-privilege IAM Roles, CloudWatch Alarms, Amazon SNS email notifications[cite: 1]. |
+
+---
+
+## 🧠 Engineering & Learning Journey
+
+### 1️⃣ Programmatic Infrastructure & State Management (`boto3`)
 Automating AWS via Python revealed everything the AWS Management Console hides behind a single "Launch" button:
+* **Asynchronous Dependency Ordering:** Provisioning a network programmatically requires strict sequencing. You cannot attach an Internet Gateway before the VPC exists, nor can you route private traffic to a NAT Gateway before it transitions from `pending` to `available`.
+* **Local State Serialization:** Because `boto3` is an imperative SDK, tearing down or modifying resources requires tracking generated IDs (`vpc-xxx`, `subnet-xxx`, `igw-xxx`). My deployment scripts serialize resource metadata into `state.json` and `monitoring_state.json`[cite: 1].
+* **Reverse-Dependency Teardown:** Deleting a VPC fails with a `DependencyViolation` if an Elastic IP is still bound to a NAT Gateway or if network interfaces (ENIs) haven't finished detaching. Writing `teardown.py` taught me how to unwind the resource graph cleanly so zero billable resources are left behind[cite: 1].
 
-Resource Dependency Ordering: Provisioning a network programmatically requires strict sequencing. You cannot attach an Internet Gateway before the VPC exists, nor can you create a Private Route Table route pointing to a NAT Gateway before that NAT Gateway transitions from pending to available. I had to implement waiter patterns and polling logic in Python to handle asynchronous AWS resource creation.
+### 2️⃣ Defense-in-Depth Networking (`project1-secure-vpc`)
+* **Asymmetric Routing Boundaries:** Configured explicit route tables where the public subnet routes `0.0.0.0/0` to an Internet Gateway, while the private subnet routes outbound traffic through a public NAT Gateway—allowing the private server to reach AWS APIs and OS package mirrors without ever exposing a public IP[cite: 1].
+* **Perimeter + Host Security:** Chained AWS Security Groups so the private instance only accepts SSH traffic originating from the Bastion Host's Security Group, then reinforced the Linux OS layer using `ufw` firewall rules and hardened SSH configurations[cite: 1].
+* **Self-Testing Infrastructure (`verify.py`):** Engineered an automated verification suite that actively probes the deployed topology to prove the Bastion is reachable, private outbound NAT routing works, and unauthorized access paths are blocked[cite: 1].
 
-Lightweight State Tracking: Because boto3 is an imperative SDK rather than a declarative IaC tool, re-running or tearing down resources requires knowing exact resource IDs (vpc-xxx, subnet-xxx, igw-xxx, alloc-xxx). I designed the deployment scripts to serialize created resource identifiers into local state.json and monitoring_state.json artifacts.   
+### 3️⃣ Linux Internals, Least-Privilege IAM & Observability (`project2-monitoring`)
+* **Linux `/proc` Telemetry Agent:** Rather than treating monitoring agents as a black box, I wrote a custom Python script scheduled via `cron` that reads raw kernel statistics directly from the Linux `/proc` pseudo-filesystem and publishes custom metric dimensions to CloudWatch[cite: 1, 3].
+* **Zero Hardcoded Credentials:** Attached a least-privilege **IAM Role / Instance Profile** to the EC2 instance so `boto3` fetches temporary rotating credentials automatically instead of storing static AWS keys on disk[cite: 1, 3].
+* **Traffic Simulation & Flow Log Parsing:** Built `generate_test_traffic.py` to trigger both accepted and rejected network flows, then wrote `analyze_flow_logs.py` to parse raw VPC Flow Logs, publish custom metrics, and trigger **CloudWatch Alarms** wired to **Amazon SNS** email alerts[cite: 1].
 
+---
 
-Dependency-Safe Teardown: Tearing down cloud infrastructure is often harder than building it. Deleting a VPC fails with a DependencyViolation if an Elastic IP is still associated with a NAT Gateway, or if network interfaces (ENIs) haven't fully detached after instance termination. Writing teardown.py taught me how to reverse the dependency graph cleanly to guarantee zero orphaned billable resources.   
+## ⚡ Quick Start & Execution Guide
 
+### Prerequisites
+* **AWS Account & IAM:** Configure a dedicated **IAM User** (never use the root account) via `aws configure`, and set a **$5.00 AWS Budget billing alarm** first (`Billing > Budgets`)[cite: 1].
+* **Python Environment:** Python `3.9+` with `boto3` installed (`pip install boto3`)[cite: 1].
+* **Shell Environment:** Linux, macOS, or **WSL (Ubuntu)** on Windows[cite: 1].
 
-**Defense-in-Depth Networking (project1-secure-vpc)**
-Rather than putting instances in a default VPC with public IPs, I built a segmented network from scratch:   
+> [!IMPORTANT]
+> **Windows WSL Users:** Clone this repository inside your native WSL Linux home directory (`~/`), **not** inside `/mnt/c/...`[cite: 1]. Windows NTFS mount permissions prevent `chmod 400` from locking down your `.pem` SSH private key, which causes OpenSSH to reject the connection[cite: 1].
 
+### Step-by-Step Deployment
 
-Routing & Asymmetric Boundaries: Configured explicit route tables so the public subnet routes 0.0.0.0/0 to an Internet Gateway (igw), while the private subnet routes outbound traffic through a public NAT Gateway—allowing the private server to pull OS updates and talk to AWS APIs without ever being directly reachable from the public internet.   
-
-
-Layered Access Control: Applied security at both the AWS perimeter and the Linux OS level. At the AWS layer, the private instance's Security Group only permits inbound SSH from the Bastion Host's Security Group ID (security group chaining). At the OS layer, I configured ufw (Uncomplicated Firewall) and hardened sshd_config to enforce key-based authentication and restrict root login.   
-
-
-
-Self-Testing Infrastructure (verify.py): Instead of assuming my security rules worked, I wrote an automated verification script (verify.py) that actively tests the topology—confirming that the Bastion is reachable, the private host can reach the internet via NAT, and unauthorized ports/direct public access are strictly rejected.   
-
-
-**Linux Internals, Least-Privilege IAM & Observability (project2-monitoring)**
-In Project 2, I wanted to understand how monitoring agents actually work under the hood rather than just installing a pre-packaged black-box agent:   
-
-
-Scraping the Linux /proc Pseudo-Filesystem: I wrote a custom Python monitoring agent deployed to the private Linux server that reads raw kernel and system statistics directly from /proc (such as /proc/meminfo, /proc/loadavg, and /proc/stat). Scheduled via cron, the script parses these system files and pushes custom metric dimensions directly to the CloudWatch API (put_metric_data).   
-
-
-
-IAM Roles & Temporary Credentials: Hardcoding AWS access keys onto an EC2 instance is a major security anti-pattern. I configured an IAM Role and Instance Profile scoped with least-privilege permissions (cloudwatch:PutMetricData and log publishing). This taught me how boto3 automatically queries the EC2 Instance Metadata Service (IMDS) to fetch temporary, rotating STS credentials seamlessly.   
-
-
-VPC Flow Log Analysis & Automated Alerting: By generating synthetic allowed and rejected traffic (generate_test_traffic.py), I captured network-level telemetry via VPC Flow Logs. My analyze_flow_logs.py script ingests and parses raw flow log records—identifying rejected packet spikes and port scans—and publishes aggregated findings to CloudWatch, triggering CloudWatch Alarms wired to an Amazon SNS topic for real-time email alerts.   
-
-
-
-Troubleshooting & Key Takeaways
-WSL File Permissions & SSH Keys: When running this lab from Windows Subsystem for Linux (WSL Ubuntu), cloning the repository into the mounted Windows filesystem (/mnt/c/...) causes OpenSSH to reject the .pem private key because Windows NTFS metadata leaves permissions too open (0777), and chmod 400 silently fails without custom mount flags. Fix: Always clone and execute the lab inside the native Linux ext4 filesystem (~/) where POSIX permissions apply properly.   
-
-
-
-VPC Flow Log Propagation Delays: Initially, running analyze_flow_logs.py immediately after generating test traffic returned empty datasets. I learned that VPC Flow Logs capture traffic in aggregation intervals and take roughly 5 to 10 minutes to flush and index into CloudWatch Logs.   
-
-
-FinOps & Cost Discipline: While VPCs, subnets, and security groups are free, NAT Gateways charge an hourly base rate (~$0.045/hour or ~$1.08/day) plus per-GB data processing fees immediately upon provisioning—even inside a Free Tier account. Building deterministic teardown scripts (teardown_monitoring.py and teardown.py) and configuring an AWS Budgets billing alarm before writing a single line of code kept my lab costs near zero.   
-
-
-**Prerequisites & Environment Setup**
-AWS Account & Security:
-
-Create an AWS Budget billing alarm first (Billing and Cost Management > Budgets, set to $5.00).   
-
-
-Provision a dedicated IAM User (never use the root account) with programmatic access, and configure local credentials via aws configure.   
-
-
-Local Environment:
-
-OS/Shell: Linux, macOS, or WSL2 (Ubuntu) on Windows. (Note: On WSL, ensure the repo is cloned inside your Linux home directory ~, not /mnt/c/..., so chmod 400 works on your .pem keys).   
-
-
-Runtime: Python 3.9+ with boto3 installed.   
-
-**Execution Guide (Order of Operations)**
-Bash
-# 1. Deploy and verify the hardened VPC & EC2 foundation
+```bash
+# =========================================================================
+# PHASE 1: Provision & Verify the Hardened VPC + Compute Foundation
+# =========================================================================
 cd project1-secure-vpc
 pip install -r requirements.txt
-python deploy.py                 # Provisions VPC, subnets, NAT GW, Bastion & Private EC2 (~5 min)
-python verify.py                 # Runs automated connectivity & security boundary assertions
 
-# 2. Layer on VPC Flow Logs, custom /proc metrics, and SNS alerting
+python deploy.py                 # Provisions VPC, Subnets, NAT GW, Bastion & Private EC2 (~5 min)
+python verify.py                 # Runs automated connectivity & firewall lockdown assertions
+
+# =========================================================================
+# PHASE 2: Deploy Telemetry Agent, VPC Flow Logs & SNS Alerting
+# =========================================================================
 cd ../project2-monitoring
-python setup_monitoring.py --email you@example.com   # Creates IAM roles, Flow Logs, Alarms & SNS
-python install_agent.py                              # Deploys /proc telemetry script & cron job
-python generate_test_traffic.py                      # Simulates accepted & rejected network traffic
 
-# Wait ~10 minutes for VPC Flow Log aggregation intervals to flush to CloudWatch
+python setup_monitoring.py --email you@example.com   # Configures IAM, Flow Logs, Alarms & SNS
+python install_agent.py                              # Deploys /proc telemetry agent & cron job
+python generate_test_traffic.py                      # Generates synthetic accept/reject traffic
+
+# ⏳ Wait ~10 minutes for AWS to flush VPC Flow Log intervals to CloudWatch
 python analyze_flow_logs.py --publish                # Parses Flow Logs & publishes custom metrics
 
-# 3. Teardown (CRITICAL: Always run in reverse order to avoid dependency locks & NAT charges!)
+# =========================================================================
+# PHASE 3: Clean Up (CRITICAL: Execute in reverse order!)
+# =========================================================================
 python teardown_monitoring.py
 cd ../project1-secure-vpc && python teardown.py
-Security & Git Hygiene
-The following runtime artifacts contain sensitive keys or environment-specific resource IDs and are strictly excluded via .gitignore:   
+```
 
+---
 
-*.pem — Generated EC2 private SSH keys.   
+## 💰 FinOps & Cost Guardrails
 
+> [!WARNING]
+> **NAT Gateway Hourly Charges:** The AWS **NAT Gateway costs ~$0.045/hour (~$1.08/day) plus per-GB data processing fees** immediately upon creation, and EC2 instances may incur charges outside the AWS Free Tier[cite: 1]. Always run both teardown scripts in reverse order at the end of a lab session, and visually verify the **VPC, EC2, and NAT Gateway** consoles to confirm zero resources remain active[cite: 1].
 
-state.json — Tracked VPC/EC2 resource IDs for Project 1.   
+---
 
+## 🛠️ Troubleshooting & Lessons Learned
 
-monitoring_state.json — Tracked IAM/CloudWatch/SNS ARNs for Project 2.   
+<details>
+<summary><b>1. Why does <code>chmod 400</code> fail on my SSH key in WSL?</b> <i>(Click to expand)</i></summary>
+<br/>
 
+When running Ubuntu on Windows via WSL, files stored under `/mnt/c/...` use the Windows NTFS filesystem driver, which defaults to permissive metadata and ignores standard POSIX `chmod 400` commands[cite: 1]. OpenSSH refuses to use a `.pem` key if it is readable by other users. Cloning the repository inside the native Linux filesystem (`~/`) resolves this immediately[cite: 1].
+</details>
 
-Whenever you're ready, paste or upload your resume (and let me know if you're targeting the Cloud Support Associate Intern, Solutions Architect Intern, or SDE Intern track at AWS), and we will tailor every section to match what AWS recruiters and hiring managers look for!
+<details>
+<summary><b>2. Why does <code>analyze_flow_logs.py</code> return empty results right after generating traffic?</b> <i>(Click to expand)</i></summary>
+<br/>
+
+VPC Flow Logs do not stream packet-by-packet in real time; AWS aggregates flow records over capture windows and takes roughly **10 minutes** to flush and index those records before they can be queried by `analyze_flow_logs.py`[cite: 1].
+</details>
+
+<details>
+<summary><b>3. What files should never be committed to Git?</b> <i>(Click to expand)</i></summary>
+<br/>
+
+The following sensitive keys and runtime state files are excluded via `.gitignore` and must never be committed[cite: 1]:
+* `*.pem` — Private SSH keys generated during EC2 provisioning[cite: 1].
+* `state.json` — Local resource ID mapping for Project 1[cite: 1].
+* `monitoring_state.json` — Local ARN and resource mapping for Project 2[cite: 1].
+</details>
